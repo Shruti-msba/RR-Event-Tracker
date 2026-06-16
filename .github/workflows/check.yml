@@ -1,0 +1,53 @@
+name: local-events-tracker
+
+# Runs daily and can be triggered by hand from the Actions tab.
+on:
+  schedule:
+    # 13:00 UTC ~= 8:00 AM Central (CDT) / 7:00 AM (CST). Adjust if you like.
+    - cron: "0 13 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write          # needed to commit the updated seen.json
+
+concurrency:
+  group: events-tracker
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tracker
+        env:
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+        run: python check.py
+
+      - name: Commit updated state
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet -- seen.json; then
+            git add seen.json
+            git commit -m "Update seen events [skip ci]"
+            git push
+          else
+            echo "No state change to commit."
+          fi
